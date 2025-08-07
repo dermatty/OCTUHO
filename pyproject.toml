@@ -5,15 +5,23 @@ description = ""
 authors = [
     {name = "dermatty",email = "stephan@untergrabner.at"}
 ]
+license = "GPL v3"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "requests (>=2.32.4,<3.0.0)",
+    "toml (>=0.10.2,<0.11.0)",
 ]
 
-[tool.poetry]
-packages = [{include = "octuho", from = "src"}]
+[tool.poetry.scripts]
+octuho = "src.octuho.octuho:run"
 
+[tool.poetry]
+packages = [
+{ include = "src/" },
+{ include = "src/**/*.py" },
+]
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
