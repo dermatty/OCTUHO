@@ -22,10 +22,14 @@ see data directory here) here:
     domain: Domain (the "Domain" entry from System > Settings > General)
 
 Usage: 
+    workon octuho (see below)
     octuho <csv_file_path>
 
 Install: install the wheel here in the dist directory with 
     pip install octuho-....-py-none-any.whl
+
+Usually your distribution insists on setting up a virtual environment before allowing pip to install, e.g. with
+"mkvirtualenv")
 
 
 
