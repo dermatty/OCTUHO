@@ -52,7 +52,7 @@ def run():
                     pass
             line = f.readline()
             i += 1
-    print("KEA data list is:", kea_data)
+    # print("KEA data list is:", kea_data)
     print(SEPSTRING)
 
     # now delete all unbound overrides and load csv hosts as overrides

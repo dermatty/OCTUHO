@@ -9,7 +9,6 @@ try:
     __appabbr__ = "oct" + __version__.split(".")[0]
     __startmode__ = "dev"
 except Exception as e:
-    print("error: " + str(e))
     __startmode__ = "systemd"
     __appname__ = "octuho"
     __appabbr__ = "oct"
