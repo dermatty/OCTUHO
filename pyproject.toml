@@ -16,6 +16,11 @@ dependencies = [
 [tool.poetry.scripts]
 octuho = "src.octuho.octuho:run"
 
+[[tool.poetry.source]]
+name = "btec"
+url = "http://btec.iv.at:8123"
+priority = "supplemental"
+
 [tool.poetry]
 packages = [
 { include = "src/" },
