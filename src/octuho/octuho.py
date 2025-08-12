@@ -40,20 +40,21 @@ def run():
         print(str(e) + ", exiting!")
         sys.exit()
     kea_data = []
-    with open(input_csv_file, newline='') as csvfile:
-        csvreader = csv.reader(csvfile, delimiter=' ', quotechar='|')
-        for i, row in enumerate(csvreader):
-            # skip headers in first row
-            if i == 0:
-                continue
-            kr = row[0].split(",")[:-1]
-            try:
-                kea_data.append({"host": kr[2], "domain": domain, "ip": kr[0], "description": kr[3]})
-            except Exception:
-                pass
+    with open(input_csv_file, "r") as f:
+        line = f.readline()
+        i = 0
+        while line != '':
+            if i > 0:
+                kr = line.split(",")[:-1]
+                try:
+                    kea_data.append({"host": kr[2], "domain": domain, "ip": kr[0], "description": kr[3]})
+                except Exception:
+                    pass
+            line = f.readline()
+            i += 1
     print("KEA data list is:", kea_data)
     print(SEPSTRING)
-    
+
     # now delete all unbound overrides and load csv hosts as overrides
     base_url = url + "/api/unbound/settings/"
     # loop over all host overrides, and replace them by setting desc. to hostname
