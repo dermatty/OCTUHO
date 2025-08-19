@@ -55,7 +55,7 @@ def run():
     # print("KEA data list is:", kea_data)
     print(SEPSTRING)
 
-    # now delete all unbound overrides and load csv hosts as overrides
+    # now delete all unbound overrides - except those start and ending with '!!' and load csv hosts as overrides
     base_url = url + "/api/unbound/settings/"
     # loop over all host overrides, and replace them by setting desc. to hostname
     unbound_cmd = base_url + "search_host_override"
@@ -70,6 +70,10 @@ def run():
     for dict0 in rj:
         uuid = dict0["uuid"]
         hostname = dict0["hostname"]
+        description = dict0["description"]
+        if description.startswith("!!") and description.endswith("!!"):
+            print("   skipping ", hostname, uuid, description)
+            continue
         unbound_cmd = base_url + "del_host_override/" + uuid
         r = requests.post(unbound_cmd, verify=False, auth=(api_key, api_secret))
         print("   ", hostname, uuid, " ---> ", json.loads(r.text)["result"])
