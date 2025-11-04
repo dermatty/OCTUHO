@@ -7,10 +7,10 @@ from os.path import expanduser
 
 warnings.filterwarnings("ignore")
 
-SEPSTRING =  "*" * 100 + "\n"
+SEPSTRING =  "*" * 100
 
 def run():
-    print("\nOCTUHO " + str(__version__) + " OpnSense CSV To Unbound HostOverrides\n")
+    print("\nOCTUHO " + str(__version__) + " OpnSense Kea CSV Export To Technitium Zone Records and Opnsense Unbound HostOverrides\n")
     
     # setup directories
     userhome = expanduser("~")
@@ -28,6 +28,18 @@ def run():
     except Exception as e:
         print(str(e) + ", exiting!")
         sys.exit()
+
+    try:
+        turl = cfg["TECHNITIUM"]["url"]
+        tuser = cfg["TECHNITIUM"]["user"]
+        tpw = cfg["TECHNITIUM"]["pw"]
+        add_technitium_local_zone = True
+    except:
+        turl = ""
+        tuser = ""
+        tpw = ""
+        add_technitium_local_zone = False
+        
         
     # check if input file exists and read into list
     try:
@@ -54,7 +66,54 @@ def run():
             i += 1
     # print("KEA data list is:", kea_data)
     print(SEPSTRING)
-
+    
+    # first: do the technitium stuff
+    if add_technitium_local_zone:
+        zone = domain
+        
+        # login & get token
+        print("Technitium: logging in ...")
+        t_login_url = turl + "/api/user/login?user=" + tuser + "&pass=" + tpw + "&includeInfo=true"
+        t_r = requests.get(t_login_url, verify=False)
+        t_json = json.loads(t_r.text)
+        t_token = t_json["token"]
+        
+        # read all records from zone, only possible via export
+        print("Technitium: reading all records from zone '" + zone + "' ...")
+        t_export_url = turl + "/api/zones/export?token=" + t_token + "&zone=" +  zone
+        t_r = requests.get(t_export_url, verify=False)
+        hostlist = []
+        for r1 in ''.join(t_r.text).split("\n"):
+            r111 = [r10.strip() for r10 in r1.split("  ") if r10 != '']
+            try:
+                if r111[3] == "A":
+                    hostlist.append((r111[0], r111[4]))
+            except Exception:
+                pass
+        
+        # now delete all entries
+        print("Technitium: deleting all old records in zone '" + zone + "' ...")
+        for hostn, ip in hostlist:
+            domain0 = hostn + "." + domain
+            t_delete_url = (turl + "/api/zones/records/delete?token=" + t_token + "&domain=" + domain0 +
+                            "&zone=" + zone + "&type=A&value=" + ip)
+            t_r = requests.get(t_delete_url, verify=False)
+            print("    deleting record " + hostn + "/" + ip + ": ",t_r)
+        
+        # and add from download_reservations
+        print("Technitium: adding all records from kea file ...")
+        for kd in kea_data:
+            t_add_url = (turl + "/api/zones/records/add?token=" + t_token + "&domain=" + kd["host"] + "."
+                         + kd["domain"] + "&zone=" + zone + "&type=A&ipAddress=" +  kd["ip"] + "&overwrite=true&ttl=36000")
+            t_r = requests.get(t_add_url, verify=False)
+            print("    adding record " + kd["host"] + "." + kd["domain"] + "/" + kd["ip"] + ": ", t_r)
+            
+        # logout
+        t_logout_url = turl + "/api/user/logout?token=" + t_token
+        t_r = requests.get(t_logout_url, verify=False)
+        print("Technitium: logged out: " , t_r)
+    
+    print(SEPSTRING)
     # now delete all unbound overrides - except those start and ending with '!!' and load csv hosts as overrides
     base_url = url + "/api/unbound/settings/"
     # loop over all host overrides, and replace them by setting desc. to hostname
@@ -65,7 +124,7 @@ def run():
         print(str(e) + ", exiting!")
         sys.exit()
     # delete host overrides
-    print("Deletion of unbound overrides:")
+    print("OpnSense: deletion of unbound overrides")
     rj = json.loads(r.text)["rows"]
     for dict0 in rj:
         uuid = dict0["uuid"]
@@ -80,7 +139,7 @@ def run():
     print(SEPSTRING)
     
     # load kea data into unbound
-    print("Loading of new Unbound host overrides from CSV:")
+    print("OpnSense: loading of new Unbound host overrides from CSV")
     for kd in kea_data:
         payload = {"host":
                        {"enabled": "1",
@@ -102,5 +161,5 @@ def run():
             uuid = "N/A"
         print("    ",kd["host"], kd["domain"], " ---> ", uuid, rj["result"])
     print(SEPSTRING)
-    print("DONE!\n")
+    print("ALL DONE!\n")
     
