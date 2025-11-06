@@ -6,6 +6,7 @@ import requests, configparser, sys, json, warnings
 from os.path import expanduser
 
 warnings.filterwarnings("ignore")
+requests.packages.urllib3.disable_warnings()
 
 SEPSTRING =  "*" * 100
 
@@ -16,7 +17,7 @@ def run():
     userhome = expanduser("~")
     maindir = userhome + "/octuho/"
     
-    # read domain, api_key, api_secret and url from config config
+    # read domain, api_key, api_secret and url from config
     cfg_file = maindir + "octuho.config"
     try:
         cfg = configparser.ConfigParser()
@@ -28,19 +29,39 @@ def run():
     except Exception as e:
         print(str(e) + ", exiting!")
         sys.exit()
-
-    try:
-        turl = cfg["TECHNITIUM"]["url"]
-        tuser = cfg["TECHNITIUM"]["user"]
-        tpw = cfg["TECHNITIUM"]["pw"]
-        add_technitium_local_zone = True
-    except:
-        turl = ""
-        tuser = ""
-        tpw = ""
+        
+    # read additional domain entries which are not in kea
+    i = 0
+    domainentry_list = []
+    add_domain_entries = True
+    while True:
+        try:
+            entry =  cfg.get("DOMAIN","entry"+str(i+1))
+            entry_list = entry.split(",")
+            domainentry_list.append(entry_list)
+            i += 1
+        except (Exception, ):
+            break
+    if i == 0:
+        add_domain_entries = False
+    
+    # read technitium dns server config
+    i = 0
+    technitium_list = []
+    add_technitium_local_zone = True
+    while True:
+        try:
+            tname = cfg["TECHNITIUM" + str(i+1)]["name"]
+            turl = cfg["TECHNITIUM" + str(i+1)]["url"]
+            ttoken = cfg["TECHNITIUM"+ str(i+1)]["token"]
+            
+            technitium_list.append((tname, turl, ttoken))
+            i += 1
+        except (Exception, ):
+            break
+    if i == 0:
         add_technitium_local_zone = False
-        
-        
+    
     # check if input file exists and read into list
     try:
         input_csv_file = sys.argv[1]
@@ -69,49 +90,46 @@ def run():
     
     # first: do the technitium stuff
     if add_technitium_local_zone:
-        zone = domain
-        
-        # login & get token
-        print("Technitium: logging in ...")
-        t_login_url = turl + "/api/user/login?user=" + tuser + "&pass=" + tpw + "&includeInfo=true"
-        t_r = requests.get(t_login_url, verify=False)
-        t_json = json.loads(t_r.text)
-        t_token = t_json["token"]
-        
-        # read all records from zone, only possible via export
-        print("Technitium: reading all records from zone '" + zone + "' ...")
-        t_export_url = turl + "/api/zones/export?token=" + t_token + "&zone=" +  zone
-        t_r = requests.get(t_export_url, verify=False)
-        hostlist = []
-        for r1 in ''.join(t_r.text).split("\n"):
-            r111 = [r10.strip() for r10 in r1.split("  ") if r10 != '']
-            try:
-                if r111[3] == "A":
-                    hostlist.append((r111[0], r111[4]))
-            except Exception:
-                pass
-        
-        # now delete all entries
-        print("Technitium: deleting all old records in zone '" + zone + "' ...")
-        for hostn, ip in hostlist:
-            domain0 = hostn + "." + domain
-            t_delete_url = (turl + "/api/zones/records/delete?token=" + t_token + "&domain=" + domain0 +
-                            "&zone=" + zone + "&type=A&value=" + ip)
-            t_r = requests.get(t_delete_url, verify=False)
-            print("    deleting record " + hostn + "/" + ip + ": ",t_r)
-        
-        # and add from download_reservations
-        print("Technitium: adding all records from kea file ...")
-        for kd in kea_data:
-            t_add_url = (turl + "/api/zones/records/add?token=" + t_token + "&domain=" + kd["host"] + "."
-                         + kd["domain"] + "&zone=" + zone + "&type=A&ipAddress=" +  kd["ip"] + "&overwrite=true&ttl=36000")
-            t_r = requests.get(t_add_url, verify=False)
-            print("    adding record " + kd["host"] + "." + kd["domain"] + "/" + kd["ip"] + ": ", t_r)
+        for tname, t_url, t_token in technitium_list:
+            zone = domain
             
-        # logout
-        t_logout_url = turl + "/api/user/logout?token=" + t_token
-        t_r = requests.get(t_logout_url, verify=False)
-        print("Technitium: logged out: " , t_r)
+            # read all records from zone, only possible via export
+            print("Technitium: reading all records from zone '" + zone + "' ...")
+            t_export_url = t_url + "/api/zones/export?token=" + t_token + "&zone=" +  zone
+            t_r = requests.get(t_export_url, verify=False)
+            hostlist = []
+            for r1 in ''.join(t_r.text).split("\n"):
+                r111 = [r10.strip() for r10 in r1.split("  ") if r10 != '']
+                try:
+                    if r111[3] == "A":
+                        hostlist.append((r111[0], r111[4]))
+                except Exception:
+                    pass
+        
+            # now delete all entries
+            print("Technitium: deleting all old records in zone '" + zone + "' ...")
+            for hostn, ip in hostlist:
+                domain0 = hostn + "." + domain
+                t_delete_url = (t_url + "/api/zones/records/delete?token=" + t_token + "&domain=" + domain0 +
+                                "&zone=" + zone + "&type=A&value=" + ip)
+                t_r = requests.get(t_delete_url, verify=False)
+                print("    deleting record " + hostn + "/" + ip + ": ",t_r)
+        
+            # and add from download_reservations
+            print("Technitium: adding all records from kea file ...")
+            for kd in kea_data:
+                t_add_url = (t_url + "/api/zones/records/add?token=" + t_token + "&domain=" + kd["host"] + "."
+                             + kd["domain"] + "&zone=" + zone + "&type=A&ipAddress=" +  kd["ip"] + "&overwrite=true&ttl=36000")
+                t_r = requests.get(t_add_url, verify=False)
+                print("    adding record " + kd["host"] + "." + kd["domain"] + "/" + kd["ip"] + ": ", t_r)
+            
+            print("Technitium: adding all additional records from octuho configfile ...")
+            if add_domain_entries:
+                for hostname, ip in domainentry_list:
+                    t_add_url = (t_url + "/api/zones/records/add?token=" + t_token + "&domain=" + hostname + "."
+                                 + domain + "&zone=" + zone + "&type=A&ipAddress=" + ip + "&overwrite=true&ttl=36000")
+                    t_r = requests.get(t_add_url, verify=False)
+                    print("    adding record " + hostname + "." + domain + "/" + ip + ": ", t_r)
     
     print(SEPSTRING)
     # now delete all unbound overrides - except those start and ending with '!!' and load csv hosts as overrides
@@ -130,9 +148,9 @@ def run():
         uuid = dict0["uuid"]
         hostname = dict0["hostname"]
         description = dict0["description"]
-        if description.startswith("!!") and description.endswith("!!"):
-            print("   skipping ", hostname, uuid, description)
-            continue
+        #if description.startswith("!!") and description.endswith("!!"):
+        #    print("   skipping ", hostname, uuid, description)
+        #    continue
         unbound_cmd = base_url + "del_host_override/" + uuid
         r = requests.post(unbound_cmd, verify=False, auth=(api_key, api_secret))
         print("   ", hostname, uuid, " ---> ", json.loads(r.text)["result"])
@@ -140,6 +158,7 @@ def run():
     
     # load kea data into unbound
     print("OpnSense: loading of new Unbound host overrides from CSV")
+    unbound_cmd = base_url + "add_host_override"
     for kd in kea_data:
         payload = {"host":
                        {"enabled": "1",
@@ -152,7 +171,6 @@ def run():
                         "description": kd["description"] + "!"
                         }
                    }
-        unbound_cmd = base_url + "add_host_override"
         r = requests.post(unbound_cmd, json=payload, verify=False, auth=(api_key, api_secret))
         rj = json.loads(r.text)
         try:
@@ -160,6 +178,33 @@ def run():
         except Exception:
             uuid = "N/A"
         print("    ",kd["host"], kd["domain"], " ---> ", uuid, rj["result"])
+    print(SEPSTRING)
+    
+    # load additional domain entries into unbound
+    print("OpnSense: loading of new Unbound host overrides from addtl. domain entries in config file")
+    unbound_cmd = base_url + "add_host_override"
+    if add_domain_entries:
+        for i, (hostname, ip) in enumerate(domainentry_list):
+            payload = {"host":
+                           {"enabled": "1",
+                            "hostname": hostname,
+                            "domain": domain,
+                            "rr": "A",
+                            "mxprio": "",
+                            "mx": "",
+                            "server": ip,
+                            "description": "addtl. domain entry #" + str(i+1)
+                            }
+                       }
+            
+            r = requests.post(unbound_cmd, json=payload, verify=False, auth=(api_key, api_secret))
+            rj = json.loads(r.text)
+            try:
+                uuid = rj["uuid"]
+            except Exception:
+                uuid = "N/A"
+            print("    ", hostname, domain, " ---> ", uuid, rj["result"])
+            
     print(SEPSTRING)
     print("ALL DONE!\n")
     
