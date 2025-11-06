@@ -62,39 +62,35 @@ def run():
     if i == 0:
         add_technitium_local_zone = False
     
-    # check if input file exists and read into list
-    try:
-        input_csv_file = sys.argv[1]
-        if not os.path.exists(input_csv_file):
-            raise Exception("Input CSV file does not exist, exiting!")
-        if not input_csv_file.casefold().endswith(".csv"):
-            raise Exception("Input file does not have CSV extension, exiting!")
-    except Exception as e:
-        print(str(e) + ", exiting!")
-        sys.exit()
-    kea_data = []
-    with open(input_csv_file, "r") as f:
-        line = f.readline()
-        i = 0
-        while line != '':
-            if i > 0:
-                kr = line.split(",")[:-1]
-                try:
-                    kea_data.append({"host": kr[2], "domain": domain, "ip": kr[0], "description": kr[3]})
-                except Exception:
-                    pass
-            line = f.readline()
-            i += 1
-    # print("KEA data list is:", kea_data)
     print(SEPSTRING)
+    # read download reservations file
+    print("Reading OpnSense Kea download_reservations.csv file ...")
+    unbound_cmd = url + "/api/kea/dhcpv4/download_reservations"
+    r = requests.get(unbound_cmd, verify=False, auth=(api_key, api_secret))
+    if r.status_code != 200:
+        e = "Url or api_key/secret wrong, exiting ..."
+        print(str(e) + ", exiting!")
+    kea_data = []
+    rsplit1 = r.text.split("\n")
+    i = 0
+    for r1 in rsplit1:
+        if i > 0:
+            kr = r1.split(",")
+            if len(kr) < 4:
+                continue
+            print("    ", kr)
+            kd0 = {"host": kr[2], "domain": domain, "ip": kr[0], "description": kr[3]}
+            kea_data.append(kd0)
+        i += 1
     
     # first: do the technitium stuff
     if add_technitium_local_zone:
+        print(SEPSTRING)
         for tname, t_url, t_token in technitium_list:
             zone = domain
             
             # read all records from zone, only possible via export
-            print("Technitium: reading all records from zone '" + zone + "' ...")
+            print(tname + ": Technitium: reading all records from zone '" + zone + "' ...")
             t_export_url = t_url + "/api/zones/export?token=" + t_token + "&zone=" +  zone
             t_r = requests.get(t_export_url, verify=False)
             hostlist = []
@@ -107,7 +103,7 @@ def run():
                     pass
         
             # now delete all entries
-            print("Technitium: deleting all old records in zone '" + zone + "' ...")
+            print(tname + ": Technitium: deleting all old records in zone '" + zone + "' ...")
             for hostn, ip in hostlist:
                 domain0 = hostn + "." + domain
                 t_delete_url = (t_url + "/api/zones/records/delete?token=" + t_token + "&domain=" + domain0 +
@@ -116,22 +112,22 @@ def run():
                 print("    deleting record " + hostn + "/" + ip + ": ",t_r)
         
             # and add from download_reservations
-            print("Technitium: adding all records from kea file ...")
+            print(tname + ": Technitium: adding all records from kea file ...")
             for kd in kea_data:
                 t_add_url = (t_url + "/api/zones/records/add?token=" + t_token + "&domain=" + kd["host"] + "."
                              + kd["domain"] + "&zone=" + zone + "&type=A&ipAddress=" +  kd["ip"] + "&overwrite=true&ttl=36000")
                 t_r = requests.get(t_add_url, verify=False)
                 print("    adding record " + kd["host"] + "." + kd["domain"] + "/" + kd["ip"] + ": ", t_r)
             
-            print("Technitium: adding all additional records from octuho configfile ...")
+            print(tname + ": Technitium: adding all additional records from octuho configfile ...")
             if add_domain_entries:
                 for hostname, ip in domainentry_list:
                     t_add_url = (t_url + "/api/zones/records/add?token=" + t_token + "&domain=" + hostname + "."
                                  + domain + "&zone=" + zone + "&type=A&ipAddress=" + ip + "&overwrite=true&ttl=36000")
                     t_r = requests.get(t_add_url, verify=False)
                     print("    adding record " + hostname + "." + domain + "/" + ip + ": ", t_r)
-    
     print(SEPSTRING)
+    
     # now delete all unbound overrides - except those start and ending with '!!' and load csv hosts as overrides
     base_url = url + "/api/unbound/settings/"
     # loop over all host overrides, and replace them by setting desc. to hostname
@@ -147,7 +143,7 @@ def run():
     for dict0 in rj:
         uuid = dict0["uuid"]
         hostname = dict0["hostname"]
-        description = dict0["description"]
+        #description = dict0["description"]
         #if description.startswith("!!") and description.endswith("!!"):
         #    print("   skipping ", hostname, uuid, description)
         #    continue
