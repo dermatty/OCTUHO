@@ -147,53 +147,55 @@ def run():
                     print("    adding record " + hostname + "." + domain + "/" + ip + ": ", t_r)
     print(SEPSTRING)
     
+    # now: unbound stuff, but only if not dnsmasq (unbound forwards to dnsmasq)
     # now delete all unbound overrides - except those start and ending with '!!' and load csv hosts as overrides
     base_url = url + "/api/unbound/settings/"
-    # loop over all host overrides, and replace them by setting desc. to hostname
-    unbound_cmd = base_url + "search_host_override"
-    r = requests.get(unbound_cmd , verify=False, auth=(api_key, api_secret))
-    if r.status_code != 200:
-        e = "Url or api_key/secret wrong, exiting ..."
-        print(str(e) + ", exiting!")
-        sys.exit()
-    # delete host overrides
-    print("OpnSense: deletion of unbound overrides")
-    rj = json.loads(r.text)["rows"]
-    for dict0 in rj:
-        uuid = dict0["uuid"]
-        hostname = dict0["hostname"]
-        #description = dict0["description"]
-        #if description.startswith("!!") and description.endswith("!!"):
-        #    print("   skipping ", hostname, uuid, description)
-        #    continue
-        unbound_cmd = base_url + "del_host_override/" + uuid
-        r = requests.post(unbound_cmd, verify=False, auth=(api_key, api_secret))
-        print("   ", hostname, uuid, " ---> ", json.loads(r.text)["result"])
-    print(SEPSTRING)
-    
-    # load kea data into unbound
-    print("OpnSense: loading of new Unbound host overrides from CSV")
-    unbound_cmd = base_url + "add_host_override"
-    for kd in host_data:
-        payload = {"host":
-                       {"enabled": "1",
-                        "hostname": kd["host"],
-                        "domain": kd["domain"],
-                        "rr": "A",
-                        "mxprio": "",
-                        "mx": "",
-                        "server": kd["ip"],
-                        "description": kd["description"] + "!"
-                        }
-                   }
-        r = requests.post(unbound_cmd, json=payload, verify=False, auth=(api_key, api_secret))
-        rj = json.loads(r.text)
-        try:
-            uuid = rj["uuid"]
-        except Exception:
-            uuid = "N/A"
-        print("    ",kd["host"], kd["domain"], " ---> ", uuid, rj["result"])
-    print(SEPSTRING)
+    if not use_dnsmasq:
+        # loop over all host overrides, and replace them by setting desc. to hostname
+        unbound_cmd = base_url + "search_host_override"
+        r = requests.get(unbound_cmd , verify=False, auth=(api_key, api_secret))
+        if r.status_code != 200:
+            e = "Url or api_key/secret wrong, exiting ..."
+            print(str(e) + ", exiting!")
+            sys.exit()
+        # delete host overrides
+        print("OpnSense: deletion of unbound overrides")
+        rj = json.loads(r.text)["rows"]
+        for dict0 in rj:
+            uuid = dict0["uuid"]
+            hostname = dict0["hostname"]
+            #description = dict0["description"]
+            #if description.startswith("!!") and description.endswith("!!"):
+            #    print("   skipping ", hostname, uuid, description)
+            #    continue
+            unbound_cmd = base_url + "del_host_override/" + uuid
+            r = requests.post(unbound_cmd, verify=False, auth=(api_key, api_secret))
+            print("   ", hostname, uuid, " ---> ", json.loads(r.text)["result"])
+        print(SEPSTRING)
+        
+        # load kea data into unbound
+        print("OpnSense: loading of new Unbound host overrides from CSV")
+        unbound_cmd = base_url + "add_host_override"
+        for kd in host_data:
+            payload = {"host":
+                           {"enabled": "1",
+                            "hostname": kd["host"],
+                            "domain": kd["domain"],
+                            "rr": "A",
+                            "mxprio": "",
+                            "mx": "",
+                            "server": kd["ip"],
+                            "description": kd["description"] + "!"
+                            }
+                       }
+            r = requests.post(unbound_cmd, json=payload, verify=False, auth=(api_key, api_secret))
+            rj = json.loads(r.text)
+            try:
+                uuid = rj["uuid"]
+            except Exception:
+                uuid = "N/A"
+            print("    ",kd["host"], kd["domain"], " ---> ", uuid, rj["result"])
+        print(SEPSTRING)
     
     # load additional domain entries into unbound
     print("OpnSense: loading of new Unbound host overrides from addtl. domain entries in config file")
