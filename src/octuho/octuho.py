@@ -11,7 +11,7 @@ requests.packages.urllib3.disable_warnings()
 SEPSTRING =  "*" * 100
 
 def run():
-    print("\nOCTUHO " + str(__version__) + " OpnSense Kea CSV Export To Technitium Zone Records and Opnsense Unbound HostOverrides\n")
+    print("\nOCTUHO " + str(__version__) + " OpnSense DHCP Hosts CSV Export To Technitium Zone Records and Opnsense Unbound HostOverrides\n")
     
     # setup directories
     userhome = expanduser("~")
@@ -26,9 +26,14 @@ def run():
         api_key = cfg["GENERAL"]["api_key"]
         api_secret = cfg["GENERAL"]["api_secret"]
         domain = cfg["GENERAL"]["domain"]
+        use_dnsmasq = True if cfg["GENERAL"]["use_dnsmasq"].lower() in ["true", "yes"] else False
     except Exception as e:
         print(str(e) + ", exiting!")
         sys.exit()
+    if use_dnsmasq:
+        print(" ... using DnsMasq host reservations!")
+    else:
+        print(" ... using Kea host reservations!")
         
     # read additional domain entries which are not in kea
     i = 0
@@ -64,13 +69,18 @@ def run():
     
     print(SEPSTRING)
     # read download reservations file
-    print("Reading OpnSense Kea download_reservations.csv file ...")
-    unbound_cmd = url + "/api/kea/dhcpv4/download_reservations"
+    if not use_dnsmasq:
+        print("Reading OpnSense Kea download_reservations.csv file ...")
+        unbound_cmd = url + "/api/kea/dhcpv4/download_reservations"
+    else:
+        print("Reading OpnSense Dnsmasq download_hosts.csv file ...")
+        unbound_cmd = url + "/api/dnsmasq/settings/download_hosts"
+
     r = requests.get(unbound_cmd, verify=False, auth=(api_key, api_secret))
     if r.status_code != 200:
         e = "Url or api_key/secret wrong, exiting ..."
         print(str(e) + ", exiting!")
-    kea_data = []
+    host_data_unsorted = []
     rsplit1 = r.text.split("\n")
     i = 0
     for r1 in rsplit1:
@@ -78,10 +88,19 @@ def run():
             kr = r1.split(",")
             if len(kr) < 4:
                 continue
-            print("    ", kr)
-            kd0 = {"host": kr[2], "domain": domain, "ip": kr[0], "description": kr[3]}
-            kea_data.append(kd0)
+            if not use_dnsmasq:
+                x_host = kr[2]
+                x_ip = kr[0]
+                x_descr = kr[3]
+            else:
+                x_host = kr[0]
+                x_ip = kr[3]
+                x_descr = kr[10]
+            kd0 = {"host": x_host, "domain": domain, "ip": x_ip, "description": x_descr}
+            # print(kd0)
+            host_data_unsorted.append(kd0)
         i += 1
+    host_data = sorted(host_data_unsorted, key=lambda d: d['ip'])
     
     # first: do the technitium stuff
     if add_technitium_local_zone:
@@ -113,7 +132,7 @@ def run():
         
             # and add from download_reservations
             print(tname + ": Technitium: adding all records from kea file ...")
-            for kd in kea_data:
+            for kd in host_data:
                 t_add_url = (t_url + "/api/zones/records/add?token=" + t_token + "&domain=" + kd["host"] + "."
                              + kd["domain"] + "&zone=" + zone + "&type=A&ipAddress=" +  kd["ip"] + "&overwrite=true&ttl=36000")
                 t_r = requests.get(t_add_url, verify=False)
@@ -155,7 +174,7 @@ def run():
     # load kea data into unbound
     print("OpnSense: loading of new Unbound host overrides from CSV")
     unbound_cmd = base_url + "add_host_override"
-    for kd in kea_data:
+    for kd in host_data:
         payload = {"host":
                        {"enabled": "1",
                         "hostname": kd["host"],
